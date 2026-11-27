@@ -105,9 +105,11 @@
 // tidak ada seed phrase. Kode ini sengaja ditulis sederhana supaya mudah dibaca.
 
 // --- 1. RPC publik: coba satu per satu kalau yang pertama gagal ---
+// Urutan: publicnode dulu — dari uji browser 27 Nov 2026, dialah yang menjawab
+// getBalance (mainnet-beta menolak dari browser dengan 403 "Access forbidden").
 const MAINNET_RPC = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com"
+  "https://solana-rpc.publicnode.com",
+  "https://api.mainnet-beta.solana.com"
 ];
 const DEVNET_RPC = "https://api.devnet.solana.com";
 
@@ -204,21 +206,29 @@ async function checkWallet() {
   btn.disabled = true;
   out.innerHTML = "<p>Memeriksa…</p>";
   try {
-    const [sol, jup, grass, dusd, devSol] = await Promise.all([
+    // allSettled: tiap cek berdiri sendiri. Satu cek gagal tidak lagi
+    // menggagalkan semuanya (itu yang membuat checker lama selalu menampilkan
+    // satu pesan error total pada 27 Nov 2026). Baris yang berhasil tetap
+    // tampil angkanya; baris yang gagal menampilkan catatan jujur.
+    const [sol, jup, grass, dusd, devSol] = await Promise.allSettled([
       getSolBalance(address, MAINNET_RPC),
       getTokenBalance(address, MINTS.JUP.address),
       getTokenBalance(address, MINTS.GRASS.address),
       getTokenBalance(address, MINTS.DUSD.address),
       getSolBalance(address, DEVNET_RPC)
     ]);
+    // value = hasil cek, atau null bila cek itu gagal.
+    const v = (r) => (r.status === "fulfilled" ? r.value : null);
+    const gagal = "<span class=\"error\">tidak bisa dicek saat ini (RPC menolak)</span>";
+    const tulis = (r, satuan) => (v(r) === null ? gagal : fmt(v(r)) + " " + satuan);
     out.innerHTML =
-      "<p><strong>Saldo mainnet:</strong> " + fmt(sol) + " SOL</p>" +
+      "<p><strong>Saldo mainnet:</strong> " + tulis(sol, "SOL di dompet") + "</p>" +
       "<ul>" +
-      "<li><strong>Jupiter ASR:</strong> " + fmt(jup) + " JUP di dompet. Kelayakan ASR (staking Jul–Sep 2026) hanya bisa dicek di <a href=\"https://jup.ag/rewards/asr-2026-q3\">jup.ag</a>.</li>" +
-      "<li><strong>Grass Stage 2:</strong> " + fmt(grass) + " GRASS di dompet. Alokasi Stage 2 dihitung dari poin off-chain — cek di <a href=\"https://app.grass.io/dashboard\">app.grass.io</a>.</li>" +
-      "<li><strong>StandX DUSD:</strong> " + fmt(dusd) + " DUSD di dompet. Klaim satu kali di <a href=\"https://standx.com/airdrop\">standx.com</a>.</li>" +
+      "<li><strong>Jupiter ASR:</strong> " + tulis(jup, "JUP di dompet") + ". Kelayakan ASR (staking Jul–Sep 2026) hanya bisa dicek di <a href=\"https://jup.ag/rewards/asr-2026-q3\">jup.ag</a>.</li>" +
+      "<li><strong>Grass Stage 2:</strong> " + tulis(grass, "GRASS di dompet") + ". Alokasi Stage 2 dihitung dari poin off-chain — cek di <a href=\"https://app.grass.io/dashboard\">app.grass.io</a>.</li>" +
+      "<li><strong>StandX DUSD:</strong> " + tulis(dusd, "DUSD di dompet") + ". Klaim satu kali di <a href=\"https://standx.com/airdrop\">standx.com</a>.</li>" +
       "<li><strong>KRAiN Catalyst:</strong> tidak bisa dicek on-chain — poin tercatat di akun KRAiN, cek di <a href=\"https://airdrop.krain.ai/\">airdrop.krain.ai</a>.</li>" +
-      "<li><strong>Solana Faucet:</strong> " + fmt(devSol) + " SOL di devnet (testnet, tanpa nilai).</li>" +
+      "<li><strong>Solana Faucet:</strong> " + tulis(devSol, "SOL di devnet (testnet, tanpa nilai)") + ".</li>" +
       "</ul>";
   } catch (e) {
     out.innerHTML = '<p class="error">RPC Solana tidak merespons. Coba lagi sebentar lagi.</p>';
