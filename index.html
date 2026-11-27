@@ -8,18 +8,23 @@
     body { font-family: Arial, sans-serif; margin: 2em auto; max-width: 900px; padding: 0 1em; color: #222; }
     h1 { margin-bottom: 0.1em; }
     .subtitle { color: #666; margin-top: 0; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1.5em; }
+    .sample { background: #eef4ff; border: 1px solid #b6d0ff; padding: 0.7em 1em; margin-top: 1.5em; font-size: 0.95em; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1em; }
     th, td { border: 1px solid #ccc; padding: 0.6em; text-align: left; }
     th { background: #f0f0f0; }
+    .status-open { color: #1a7f37; font-weight: bold; }
+    .status-soon { color: #9a6700; font-weight: bold; }
     .note { background: #fff8e1; border: 1px solid #ffe082; padding: 1em; margin-top: 1.5em; }
     footer { margin-top: 2em; color: #888; font-size: 0.9em; }
   </style>
 </head>
 <body>
-
   <h1>Solana Airdrop Radar</h1>
   <p class="subtitle">Airdrop, testnet, and free-claim opportunities on Solana — deadlines, status, and official links only.</p>
-
+  <div class="sample">
+    <strong>Sample data:</strong> the rows below are placeholders to show the layout.
+    See <a href="https://github.com/massizt89-cyber/solana-airdrop-radar/blob/main/README.md">README.md</a> for how to add real curated entries.
+  </div>
   <table>
     <tr>
       <th>Project</th>
@@ -29,35 +34,32 @@
       <th>Official link</th>
     </tr>
     <tr>
-      <td>CONTOH: Project Alpha</td>
+      <td>Sample: Project Alpha</td>
       <td>Testnet</td>
       <td>2026-12-01</td>
-      <td>Open</td>
+      <td class="status-open">Open</td>
       <td><a href="https://example.com">example.com</a></td>
     </tr>
     <tr>
-      <td>CONTOH: Project Beta</td>
+      <td>Sample: Project Beta</td>
       <td>Free claim</td>
       <td>2026-12-15</td>
-      <td>Open</td>
+      <td class="status-open">Open</td>
       <td><a href="https://example.com">example.com</a></td>
     </tr>
     <tr>
-      <td>CONTOH: Project Gamma</td>
+      <td>Sample: Project Gamma</td>
       <td>Airdrop</td>
       <td>2026-11-30</td>
-      <td>Ended</td>
+      <td class="status-soon">Closing soon</td>
       <td><a href="https://example.com">example.com</a></td>
     </tr>
   </table>
-
   <div class="note">
-    <strong>Coming next:</strong> a read-only wallet checker (paste a Solana address,
+    <strong>Roadmap:</strong> a read-only wallet checker (paste a Solana address,
     see which opportunities it already joined). That part needs JavaScript —
-    it will be our next lesson, built on top of this page.
+    it will be built on top of this page.
   </div>
-
   <footer>Data is curated by hand. Always verify on the project's official site before claiming anything.</footer>
-
 </body>
 </html>
