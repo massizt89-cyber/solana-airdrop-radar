@@ -15,6 +15,13 @@
     .status-open { color: #1a7f37; font-weight: bold; }
     .status-soon { color: #9a6700; font-weight: bold; }
     .note { background: #fff8e1; border: 1px solid #ffe082; padding: 1em; margin-top: 1.5em; }
+    .checker { background: #f6f8fa; border: 1px solid #d0d7de; padding: 1em; margin-top: 1.5em; }
+    .checker h2 { margin-top: 0; }
+    .checker input { width: 100%; max-width: 560px; padding: 0.6em; font-size: 1em; box-sizing: border-box; }
+    .checker button { padding: 0.6em 1.2em; font-size: 1em; margin-top: 0.6em; cursor: pointer; }
+    .checker .result { margin-top: 1em; }
+    .checker .error { color: #b3261e; font-weight: bold; }
+    .muted { color: #666; font-size: 0.95em; }
     footer { margin-top: 2em; color: #888; font-size: 0.9em; }
   </style>
 </head>
@@ -25,6 +32,15 @@
 
   <div class="sample">
     <strong>Real data:</strong> live opportunities, verified on each project's official site on 27 Nov 2026.
+  </div>
+
+  <div class="checker">
+    <h2>Wallet checker (read-only)</h2>
+    <p class="muted">Tempel alamat Solana publik untuk melihat saldo dan peluang mana yang bisa dicek dari blockchain. Read-only: alamat hanya dipakai untuk membaca data publik. Tidak ada koneksi wallet, tidak ada tanda tangan, tidak ada seed phrase.</p>
+    <input id="wallet-input" type="text" placeholder="Tempel alamat Solana di sini (32–44 karakter)" autocomplete="off" spellcheck="false">
+    <br>
+    <button id="wallet-check-btn" type="button">Cek dompet</button>
+    <div id="wallet-result" class="result"></div>
   </div>
 
   <table>
@@ -77,12 +93,145 @@
   </div>
 
   <div class="note">
-    <strong>Roadmap:</strong> a read-only wallet checker (paste a Solana address,
-    see which opportunities it already joined). That part needs JavaScript —
-    it will be built on top of this page.
+    <strong>Roadmap:</strong> the wallet checker above is live. Next: a status filter (All / Open / Ending soon).
   </div>
 
   <footer>Data is curated by hand. Always verify on the project's official site before claiming anything.</footer>
+
+<script>
+// ===== Wallet checker: semua cek di bawah ini READ-ONLY =====
+// Alamat yang ditempel hanya dipakai untuk membaca data PUBLIK di blockchain
+// lewat RPC publik Solana. Tidak ada koneksi wallet, tidak ada tanda tangan,
+// tidak ada seed phrase. Kode ini sengaja ditulis sederhana supaya mudah dibaca.
+
+// --- 1. RPC publik: coba satu per satu kalau yang pertama gagal ---
+const MAINNET_RPC = [
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-rpc.publicnode.com"
+];
+const DEVNET_RPC = "https://api.devnet.solana.com";
+
+// --- 2. Alamat mint token yang dicek (terverifikasi on-chain 27 Nov 2026) ---
+const MINTS = {
+  JUP:   { address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", decimals: 6 },
+  GRASS: { address: "Grass7B4RdKfBCjTKgSqnXkqjwiGvQyFbuSCUJr3XXjs", decimals: 9 },
+  DUSD:  { address: "DUSDt4AeLZHWYmcXnVGYdgAzjtzU5mXUVnTMdnSzAttM", decimals: 6 }
+};
+
+// --- 3. Validasi alamat Solana: base58, tepat 32 byte setelah di-decode ---
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function decodeBase58(str) {
+  let num = 0n;
+  for (const ch of str) {
+    const idx = BASE58.indexOf(ch);
+    if (idx === -1) return null; // karakter bukan base58 (0, O, I, l)
+    num = num * 58n + BigInt(idx);
+  }
+  let bytes = [];
+  if (num > 0n) {
+    let hex = num.toString(16);
+    if (hex.length % 2) hex = "0" + hex;
+    for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.slice(i, i + 2), 16));
+  }
+  let leading = 0;
+  for (const ch of str) { if (ch === "1") leading++; else break; } // '1' di depan = byte 0
+  return new Uint8Array([...new Array(leading).fill(0), ...bytes]);
+}
+
+function isValidSolanaAddress(str) {
+  const bytes = decodeBase58(str.trim());
+  return bytes !== null && bytes.length === 32;
+}
+
+// --- 4. Panggil RPC Solana (JSON-RPC) dengan batas waktu 10 detik ---
+async function rpcCall(urls, method, params) {
+  const list = Array.isArray(urls) ? urls : [urls];
+  let lastError = null;
+  for (const url of list) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || "RPC error");
+      return data.result;
+    } catch (e) { lastError = e; }
+  }
+  throw lastError || new Error("RPC tidak merespons");
+}
+
+// --- 5. Saldo SOL: RPC mengembalikan lamports, 1 SOL = 1.000.000.000 lamports ---
+async function getSolBalance(address, urls) {
+  const result = await rpcCall(urls, "getBalance", [address]);
+  return result.value / 1e9;
+}
+
+// --- 6. Saldo token SPL: jumlahkan semua akun token untuk mint itu ---
+async function getTokenBalance(address, mint) {
+  const result = await rpcCall(MAINNET_RPC, "getTokenAccountsByOwner", [
+    address, { mint }, { encoding: "jsonParsed" }
+  ]);
+  let total = 0;
+  for (const acc of result.value) {
+    total += acc.account.data.parsed.info.tokenAmount.uiAmount || 0;
+  }
+  return total;
+}
+
+// --- 7. Format angka: maksimal 4 desimal ---
+function fmt(n) {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
+// --- 8. Fungsi utama saat tombol diklik ---
+async function checkWallet() {
+  const input = document.getElementById("wallet-input");
+  const out = document.getElementById("wallet-result");
+  const btn = document.getElementById("wallet-check-btn");
+  const address = input.value.trim();
+
+  if (!isValidSolanaAddress(address)) {
+    out.innerHTML = '<p class="error">Alamat tidak valid. Alamat Solana itu 32–44 karakter base58 (tanpa 0, O, I, l). Coba tempel lagi.</p>';
+    return;
+  }
+  btn.disabled = true;
+  out.innerHTML = "<p>Memeriksa…</p>";
+  try {
+    const [sol, jup, grass, dusd, devSol] = await Promise.all([
+      getSolBalance(address, MAINNET_RPC),
+      getTokenBalance(address, MINTS.JUP.address),
+      getTokenBalance(address, MINTS.GRASS.address),
+      getTokenBalance(address, MINTS.DUSD.address),
+      getSolBalance(address, DEVNET_RPC)
+    ]);
+    out.innerHTML =
+      "<p><strong>Saldo mainnet:</strong> " + fmt(sol) + " SOL</p>" +
+      "<ul>" +
+      "<li><strong>Jupiter ASR:</strong> " + fmt(jup) + " JUP di dompet. Kelayakan ASR (staking Jul–Sep 2026) hanya bisa dicek di <a href=\"https://jup.ag/rewards/asr-2026-q3\">jup.ag</a>.</li>" +
+      "<li><strong>Grass Stage 2:</strong> " + fmt(grass) + " GRASS di dompet. Alokasi Stage 2 dihitung dari poin off-chain — cek di <a href=\"https://app.grass.io/dashboard\">app.grass.io</a>.</li>" +
+      "<li><strong>StandX DUSD:</strong> " + fmt(dusd) + " DUSD di dompet. Klaim satu kali di <a href=\"https://standx.com/airdrop\">standx.com</a>.</li>" +
+      "<li><strong>KRAiN Catalyst:</strong> tidak bisa dicek on-chain — poin tercatat di akun KRAiN, cek di <a href=\"https://airdrop.krain.ai/\">airdrop.krain.ai</a>.</li>" +
+      "<li><strong>Solana Faucet:</strong> " + fmt(devSol) + " SOL di devnet (testnet, tanpa nilai).</li>" +
+      "</ul>";
+  } catch (e) {
+    out.innerHTML = '<p class="error">RPC Solana tidak merespons. Coba lagi sebentar lagi.</p>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("wallet-check-btn").addEventListener("click", checkWallet);
+document.getElementById("wallet-input").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") checkWallet();
+});
+</script>
 
 </body>
 </html>
